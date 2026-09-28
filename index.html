@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Leitor · Painel de Produção</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{--yellow:#f2a900;--on-yellow:#3b2a00;--bg:#ededed;--card:#fff;--ink:#222;--muted:#666;--blue:#3483fa;--err:#d94a3d}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Inter,system-ui,sans-serif}
+  header{background:var(--yellow);color:var(--on-yellow);padding:12px 16px;display:flex;align-items:center;gap:10px}
+  header b{font-family:Poppins,sans-serif;font-size:17px}
+  header .modo{margin-left:auto;background:rgba(255,255,255,.55);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:600}
+  main{max-width:560px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.12);padding:14px}
+  #reader{width:100%;border-radius:8px;overflow:hidden;background:#000;min-height:240px}
+  #reader video{width:100%!important;height:auto!important}
+  .msg{margin:12px 0 0;text-align:center;color:var(--muted)}
+  .msg.err{color:var(--err);font-weight:600}
+  .ok{position:fixed;inset:0;background:rgba(47,125,63,.92);color:#fff;display:none;align-items:center;justify-content:center;flex-direction:column;font:700 22px Poppins,sans-serif;text-align:center;padding:24px}
+  .ok small{font:400 15px Inter,sans-serif;margin-top:8px}
+  select,button,a.btn{font:inherit;width:100%;margin-top:10px;padding:12px;border-radius:8px;border:1px solid #ccc;background:#fff;color:var(--ink);text-align:center;text-decoration:none;display:block}
+  button.pri{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:600}
+  .hide{display:none!important}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin:18px 0}
+</style>
+</head>
+<body>
+<header><b>Leitor ao vivo</b><span class="modo" id="modo"></span></header>
+<main>
+  <div class="card">
+    <div id="reader"></div>
+    <p class="msg" id="msg">Abrindo a câmera…</p>
+    <select id="camSel" class="hide" aria-label="Escolher câmera"></select>
+    <button class="pri hide" id="btTentar">Tentar de novo</button>
+    <a class="btn" id="btVoltar" href="#">← Voltar ao painel</a>
+  </div>
+  <footer>Modo demonstração do Painel de Produção · Hakuna</footer>
+</main>
+<div class="ok" id="ok">✔ Lido<small id="okTxt"></small></div>
+
+<script>
+// Só volta para um painel publicado no Apps Script (evita virar redirecionador para qualquer site).
+const params = new URLSearchParams(location.hash.slice(1));
+const volta = params.get('volta') || '';
+const VOLTA_OK = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(volta);
+const NOMES = { descer: 'Descer', producao: 'Produção', consulta: 'Consultar' };
+document.getElementById('modo').textContent = NOMES[params.get('modo')] ? 'Modo: ' + NOMES[params.get('modo')] : '';
+
+const $ = s => document.getElementById(s);
+const msg = (t, err) => { $('msg').textContent = t; $('msg').className = 'msg' + (err ? ' err' : ''); };
+
+if (VOLTA_OK) $('btVoltar').href = volta;
+else { $('btVoltar').classList.add('hide'); }
+
+let leitor = null, lido = false;
+
+function codigoLido(txt){
+  const m = String(txt || '').match(/[?&]os=([^&#\s]+)/);
+  return m ? decodeURIComponent(m[1]).trim() : String(txt || '').trim();
+}
+
+function bip(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'square'; o.frequency.value = 1400; g.gain.value = .08;
+    o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .09);
+  }catch(e){}
+  if (navigator.vibrate) navigator.vibrate(60);
+}
+
+async function aoLer(txt){
+  if (lido) return;
+  const codigo = codigoLido(txt);
+  if (!codigo) return;
+  lido = true;
+  bip();
+  $('okTxt').textContent = codigo;
+  $('ok').style.display = 'flex';
+  try{ await leitor.stop(); }catch(e){}
+  if (!VOLTA_OK){ msg('Lido: ' + codigo + ' (abra este leitor pelo painel para registrar).'); $('ok').style.display = 'none'; return; }
+  location.href = volta + '?os=' + encodeURIComponent(codigo) + '&cam=1';
+}
+
+async function ligar(){
+  $('btTentar').classList.add('hide');
+  if (!window.Html5Qrcode){ msg('O leitor não carregou. Confira a internet.', true); $('btTentar').classList.remove('hide'); return; }
+  try{
+    leitor = leitor || new Html5Qrcode('reader', { formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE, Html5QrcodeSupportedFormats.CODE_128
+    ], experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
+    const cams = await Html5Qrcode.getCameras();
+    const sel = $('camSel');
+    if (cams.length > 1 && !sel.options.length){
+      sel.innerHTML = '';
+      cams.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label || 'Câmera'; sel.appendChild(o); });
+      const tras = cams.find(c => /back|tras|traseira|rear|environment/i.test(c.label)); if (tras) sel.value = tras.id;
+      sel.classList.remove('hide');
+    }
+    const alvo = sel.value ? { deviceId: { exact: sel.value } } : { facingMode: 'environment' };
+    await leitor.start(alvo, { fps: 10, qrbox: (w, h) => { const s = Math.floor(Math.min(w, h) * .75); return { width: s, height: s }; } },
+      aoLer, () => {});
+    msg('Aponte para o QR code ou o código de barras da OS.');
+  }catch(e){
+    msg('Não consegui abrir a câmera. Permita o acesso à câmera no navegador e toque em “Tentar de novo”.', true);
+    $('btTentar').classList.remove('hide');
+  }
+}
+
+$('btTentar').addEventListener('click', ligar);
+$('camSel').addEventListener('change', async () => { if (leitor){ try{ await leitor.stop(); }catch(e){} } ligar(); });
+ligar();
+</script>
+</body>
+</html>
