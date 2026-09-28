@@ -47,7 +47,7 @@
 // Só volta para um painel publicado no Apps Script (evita virar redirecionador para qualquer site).
 const params = new URLSearchParams(location.hash.slice(1));
 const volta = params.get('volta') || '';
-const VOLTA_OK = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(volta);
+const VOLTA_OK = /^https:\/\/script\.google\.com\/(a\/[\w.-]+\/)?macros\/s\/[\w-]+\/exec$/.test(volta);
 const NOMES = { descer: 'Descer', producao: 'Produção', consulta: 'Consultar' };
 document.getElementById('modo').textContent = NOMES[params.get('modo')] ? 'Modo: ' + NOMES[params.get('modo')] : '';
 
